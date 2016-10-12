@@ -47,7 +47,6 @@ import static org.neo4j.kernel.api.proc.ProcedureSignature.procedureName;
 
 public class SchemaProcedureIT extends KernelIntegrationTest
 {
-
     @Rule
     public ExpectedException exception = ExpectedException.none();
 
@@ -90,9 +89,9 @@ public class SchemaProcedureIT extends KernelIntegrationTest
         while ( stream.hasNext() )
         {
             Object[] next = stream.next();
-            assertTrue( next.length == 2 );
+            assertEquals(2, next.length);
             ArrayList<Node> nodes = (ArrayList<Node>) next[0];
-            assertTrue( nodes.size() == 1 );
+            assertEquals( 1, nodes.size() );
             assertThat( nodes.get( 0 ).getLabels(), contains( equalTo( Label.label( "Person" ) ) ) );
             assertEquals( nodes.get( 0 ).getAllProperties().get( "name" ), new String( "Person" ) );
             assertEquals( nodes.get( 0 ).getAllProperties().get( "indexes" ), Arrays.asList( "name" ) );
@@ -104,7 +103,7 @@ public class SchemaProcedureIT extends KernelIntegrationTest
     @Test
     public void testRelationShip() throws Throwable
     {
-        // Given there ar
+        // Given a (:Person)-[:LIVES_IN]->(:Location)
         DataWriteOperations ops = dataWriteOperationsInNewTransaction();
         long nodeIdPerson = ops.nodeCreate();
         int labelIdPerson = ops.labelGetOrCreateForName( "Person" );
@@ -123,15 +122,47 @@ public class SchemaProcedureIT extends KernelIntegrationTest
         while ( stream.hasNext() )
         {
             Object[] next = stream.next();
-            assertTrue( next.length == 2 );
+            assertEquals(2, next.length);
             LinkedList<Relationship> relationships = (LinkedList<Relationship>) next[1];
-            assertTrue( relationships.size() == 1 );
+            assertEquals( 1, relationships.size() );
             assertEquals( "LIVES_IN", relationships.get( 0 ).getType().name() );
             assertThat( relationships.get( 0 ).getStartNode().getLabels(),
                     contains( equalTo( Label.label( "Person" ) ) ) );
             assertThat( relationships.get( 0 ).getEndNode().getLabels(),
                     contains( equalTo( Label.label( "Location" ) ) ) );
 
+        }
+    }
+
+    @Test
+    public void testExistingRelationship() throws Throwable
+    {
+        // Given (:Start)-[:CONNECTS_TO]->(:Middle)-[:CONNECTS_TO]->(:End)
+        DataWriteOperations ops = dataWriteOperationsInNewTransaction();
+        long nodeIdStart = ops.nodeCreate();
+        int labelIdStart = ops.labelGetOrCreateForName( "Start" );
+        ops.nodeAddLabel( nodeIdStart, labelIdStart );
+        long nodeIdMiddle = ops.nodeCreate();
+        int labelIdMiddle = ops.labelGetOrCreateForName( "Middle" );
+        ops.nodeAddLabel( nodeIdMiddle, labelIdMiddle );
+        long nodeIdEnd = ops.nodeCreate();
+        int labelIdEnd = ops.labelGetOrCreateForName( "End" );
+        ops.nodeAddLabel( nodeIdEnd, labelIdEnd );
+        ops.relationshipCreate( ops.relationshipTypeGetOrCreateForName( "CONNECTS_TO" ), nodeIdStart, nodeIdMiddle );
+        ops.relationshipCreate( ops.relationshipTypeGetOrCreateForName( "CONNECTS_TO" ), nodeIdMiddle, nodeIdEnd );
+        commit();
+
+        // When
+        RawIterator<Object[],ProcedureException> stream =
+                procedureCallOpsInNewTx().procedureCallRead( procedureName( "db", "schema" ), new Object[0] );
+
+        // Then there should be two meta relationships instead of four without the existence check.
+        while ( stream.hasNext() )
+        {
+            Object[] next = stream.next();
+            assertEquals(2,  next.length);
+            LinkedList<Relationship> relationships = (LinkedList<Relationship>) next[1];
+            assertEquals( 2, relationships.size() );
         }
     }
 }

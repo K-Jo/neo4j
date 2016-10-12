@@ -132,13 +132,39 @@ public class SchemaProcedure
                 {
                     for ( NodeImpl endNode : endNodes )
                     {
-                        RelationshipImpl relationship = addRelationship( startNode, endNode, relationshipTypeGetName, relationships );
+                        RelationshipImpl relationship =
+                                new RelationshipImpl( startNode, endNode, relationshipTypeGetName );
+                        if ( checkExistence( relationship ) )
+                        {
+                            addRelationship( relationship, relationships );
+                        }
                     }
                 }
             }
             transaction.success();
             return getGraphResult( nodes, relationships );
         }
+    }
+
+    private boolean checkExistence( RelationshipImpl relationship )
+    {
+        final ResourceIterator<Node> startNodes = graphDatabaseAPI.findNodes( relationship.getStartNode().getLabel() );
+        Boolean instanceFound = false;
+        while ( startNodes.hasNext() && !instanceFound )
+        {
+            Node possibleStartNode = startNodes.next();
+            Iterable<Relationship> relationships =
+                    possibleStartNode.getRelationships( relationship.getType(), Direction.OUTGOING );
+            for ( Relationship rel : relationships )
+            {
+                if ( rel.getEndNode().hasLabel( relationship.getEndNode().getLabel() ) )
+                {
+                    instanceFound = true;
+                }
+            }
+        }
+        startNodes.close();
+        return instanceFound;
     }
 
     public static class GraphResult
@@ -153,8 +179,7 @@ public class SchemaProcedure
         }
     }
 
-    private NodeImpl getOrCreateLabel( String label, Map<String,Object> properties,
-            final Map<String,NodeImpl> nodeMap )
+    private NodeImpl getOrCreateLabel( String label, Map<String,Object> properties, final Map<String,NodeImpl> nodeMap )
     {
         if ( nodeMap.containsKey( label ) )
         {
@@ -165,9 +190,10 @@ public class SchemaProcedure
         return node;
     }
 
-    private RelationshipImpl addRelationship( NodeImpl startNode, NodeImpl endNode, String relType,
+    private void addRelationship( RelationshipImpl newRelationship,
             final Map<String,Set<RelationshipImpl>> relationshipMap )
     {
+        String relType = newRelationship.relationshipType.name();
         Set<RelationshipImpl> relationshipsForType;
         if ( !relationshipMap.containsKey( relType ) )
         {
@@ -178,12 +204,10 @@ public class SchemaProcedure
         {
             relationshipsForType = relationshipMap.get( relType );
         }
-        RelationshipImpl relationship = new RelationshipImpl( startNode, endNode, relType );
-        if ( !relationshipsForType.contains( relationship ) )
+        if ( !relationshipsForType.contains( newRelationship ) )
         {
-            relationshipsForType.add( relationship );
+            relationshipsForType.add( newRelationship );
         }
-        return relationship;
     }
 
     private GraphResult getGraphResult( final Map<String,NodeImpl> nodeMap,
@@ -207,8 +231,8 @@ public class SchemaProcedure
         private static AtomicLong MIN_ID = new AtomicLong( -1 );
 
         private final long id;
-        private final Node startNode;
-        private final Node endNode;
+        private final NodeImpl startNode;
+        private final NodeImpl endNode;
         private final RelationshipType relationshipType;
 
         public RelationshipImpl( final NodeImpl startNode, final NodeImpl endNode, final String type )
@@ -233,13 +257,13 @@ public class SchemaProcedure
         }
 
         @Override
-        public Node getStartNode()
+        public NodeImpl getStartNode()
         {
             return startNode;
         }
 
         @Override
-        public Node getEndNode()
+        public NodeImpl getEndNode()
         {
             return endNode;
         }
@@ -327,6 +351,41 @@ public class SchemaProcedure
         {
             return null;
         }
+
+        @Override
+        public boolean equals( Object o )
+        {
+            if ( this == o )
+            {
+                return true;
+            }
+            if ( o == null || getClass() != o.getClass() )
+            {
+                return false;
+            }
+
+            RelationshipImpl that = (RelationshipImpl) o;
+
+            if ( !startNode.equals( that.startNode ) )
+            {
+                return false;
+            }
+            if ( !endNode.equals( that.endNode ) )
+            {
+                return false;
+            }
+            return relationshipType.equals( that.relationshipType );
+
+        }
+
+        @Override
+        public int hashCode()
+        {
+            int result = startNode.hashCode();
+            result = 31 * result + endNode.hashCode();
+            result = 31 * result + relationshipType.hashCode();
+            return result;
+        }
     }
 
     private static class NodeImpl implements Node
@@ -344,6 +403,11 @@ public class SchemaProcedure
             this.label = Label.label( label );
             propertyMap.putAll( properties );
             propertyMap.put( "name", label );
+        }
+
+        public Label getLabel()
+        {
+            return label;
         }
 
         @Override
@@ -536,6 +600,30 @@ public class SchemaProcedure
         public Map<String,Object> getProperties( String... keys )
         {
             return null;
+        }
+
+        @Override
+        public boolean equals( Object o )
+        {
+            if ( this == o )
+            {
+                return true;
+            }
+            if ( o == null || getClass() != o.getClass() )
+            {
+                return false;
+            }
+
+            NodeImpl node = (NodeImpl) o;
+
+            return label.equals( node.label );
+
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return label.hashCode();
         }
     }
 }
